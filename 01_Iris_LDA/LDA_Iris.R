@@ -1,18 +1,18 @@
 
 
-
-if (!require("ggplot2")) install.packages("ggplot2",dependencies = TRUE)
-if (!require("MASS")) install.packages("MASS",dependencies = TRUE)
-if (!require("knitr")) install.packages("knitr",dependencies = TRUE)
-if (!require("ggcorrplot")) install.packages("ggcorrplot",dependencies = TRUE)
-if (!require("pdp")) install.packages("pdp",dependencies = TRUE)
-if (!require("mvShapiroTest")) install.packages("mvShapiroTest",dependencies = TRUE)
-if (!require("biotools")) install.packages("biotools",dependencies = TRUE)
-if (!require("heplots")) install.packages("heplots",dependencies = TRUE)
-if (!require("car")) install.packages("car",dependencies = TRUE)
-if (!require("klaR")) install.packages("klaR",dependencies = TRUE)
-if (!require("haven")) install.packages("haven",dependencies = TRUE)
-if (!require("caret")) install.packages("caret",dependencies = TRUE)
+# Package
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("MASS")) install.packages("MASS")
+if (!require("knitr")) install.packages("knitr")
+if (!require("ggcorrplot")) install.packages("ggcorrplot")
+if (!require("pdp")) install.packages("pdp")
+if (!require("mvShapiroTest")) install.packages("mvShapiroTest")
+if (!require("biotools")) install.packages("biotools")
+if (!require("heplots")) install.packages("heplots")
+if (!require("car")) install.packages("car")
+if (!require("klaR")) install.packages("klaR")
+if (!require("haven")) install.packages("haven")
+if (!require("caret")) install.packages("caret")
 
 library(ggplot2)
 library(MASS)
@@ -29,7 +29,6 @@ library(caret)
 data(iris)
 iris.5 <- iris[1:5,]
 kable(iris.5)
-
 
 
 
@@ -96,15 +95,9 @@ var.test(x = iris[iris$Species == "versicolor", "Petal.Length"],
 ## Ho: La matriz de covarianzas de las variables dependientes son iguales en todos los grupos/poblaciones
 ## H1: La matriz de covarianzas no es igual en todos los grupos
 
-res <- boxM(iris[, -5], iris[, 5])
+boxM(iris[, -5], iris[, 5])
 
 ### res
-
-## BoxM virginica y versicolor
-
-iris_two_labels <- iris[iris$Species== "versicolor" | iris$Species== "virginica",]
-
-boxM(iris_two_labels[,1:4], iris_two_labels[,5])
 
 ### summary(res)
 
@@ -122,7 +115,7 @@ bartlett.test(iris[,4]~Species, iris) # Petal.Width
 
 ## Barlett todas
 
-bartlettTests(iris[,1:4], iris$Species) # Todas
+x <- data.frame(bartlettTests(iris[,1:4], iris$Species)) # Todas
 
 
 
@@ -146,7 +139,7 @@ leveneTest(y = iris$Sepal.Width, group = iris$Species, center = "mean")
 
 
 library(HH)
-hov(iris$Sepal.Length ~ iris$Species)
+hov(iris$Sepal.Width ~ iris$Species)
 
 
 
@@ -167,7 +160,7 @@ featurePlot(x=x, y=y, plot="density", scales=scales)
 
 # Cross validation
 
-control <- trainControl(method="cv", number=10, p= 0.90)
+control <- trainControl(method="cv", number=10, p= 0.70)
 metric <- "Accuracy"
 
 # Analysis

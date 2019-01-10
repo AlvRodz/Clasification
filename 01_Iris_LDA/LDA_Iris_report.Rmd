@@ -1,0 +1,376 @@
+---
+title: "Iris LDA"
+author: "[Álvaro Rodríguez](https://github.com/AlvRodz)"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+mail: "alvrodriguezprof@gmail.com"
+linkedin: "www.linkedin.com/in/AlvRodz"
+twitter: "AlvaroRL28"
+github: "AlvRodz"
+logo: "image/irises.png"
+output:
+  epuRate::epurate:
+    toc: TRUE
+    number_sections: FALSE
+    code_folding: "hide"
+---
+
+<br><br>
+
+> Haciendo uso de técnicas de agrupamientos y conforme a las indicaciones recibidas por nuestro responsable, se han distribuido los vehículos que recientemente ha adquirido en sus diferentes localizaciones.
+
+> Se han utilizado las variables potencia, peso y aceleración para adaptar los vehículos a cada localización.
+
+> En primer lugar, se ha definido de forma exhaustiva el problema que se pretende resolver, se ha definido el enfoque más óptimo a nivel práctico y posteriormente se ha demostrado que la muestra utilizada y las variables seleccionadas tienen las características necesarias para ser agrupadadas de forma consistente.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Packages
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("MASS")) install.packages("MASS")
+if (!require("knitr")) install.packages("knitr")
+if (!require("ggcorrplot")) install.packages("ggcorrplot")
+if (!require("pdp")) install.packages("pdp")
+if (!require("mvShapiroTest")) install.packages("mvShapiroTest")
+if (!require("biotools")) install.packages("biotools")
+if (!require("heplots")) install.packages("heplots")
+if (!require("car")) install.packages("car")
+if (!require("klaR")) install.packages("klaR")
+if (!require("haven")) install.packages("haven")
+if (!require("caret")) install.packages("caret")
+if (!require("HH")) install.packages("HH")
+if (!require("gridExtra")) install.packages("gridExtra")
+
+library(gridExtra)
+library(HH)
+library(ggplot2)
+library(MASS)
+library(knitr)
+library(ggcorrplot)
+library(pdp)
+library(mvShapiroTest)
+library(biotools)
+library(heplots)
+library(car)
+library(klaR)
+library(caret)
+```
+
+
+# Introducción
+
+El análisis discriminante es una técnica estadística multivariante. La pertenencia de un individuo a uno u otro grupo se introduce en el análisis mediante una variable categórica, que toma tantos valores como grupos existentes. Esta será la varibale dependiente y sus diferentes valores sirven como etiqueta para cada observación. Las variables independientes o explicativas son continuas.Se pretende encontrar relaciones lineales entre las variables continuas que mejor discriminen en los grupos asignados a cada valor categórico.
+
+Así pues, persigue explicar la pertenencia de cada individuo original a uno u otro grupo pre-establecido, en función de sus atributos, cuantificando el peso de cada uno de ellos en la discriminación. De esta manera, se puede predecir a qué grupo es más probable que perteneza una nueva observación, si conocemos sus respectivos valores explicativos.
+
+
+El análisis discriminante está muy relacionado con el análisis multivariante de la varianza con un factor, aunque el papel que juegan los distintos tipos de variables está invertido en uno y otro método. Así, en el análisis de la varianza la variable categórica (el factor) es la variable explicativa, mientras que en el análisis discriminante la variable categórica es precisamente la variable dependiente.
+
+# Datos
+
+Para llevar a cabo el análisis se utilizan los datos del famoso dataset de **"Iris"**.
+
+El conjunto de datos fue publicado originalmente en 1936 por el estadístico y biólogo británico, **Sir Ronald Fisher**, en su publicación “El uso de medidas múltiples en problemas taxonómicos”. Se trata de un conjunto de datos multivariante de **150 observaciones** con 4 atributos cada una: **longitud del sépalo, ancho del sépalo, longitud del pétalo y ancho del pétalo**. No hay valores nulos. Hay **50 observaciones de cada especie** de Iris (setosa, versicolor, virginica).
+
+Entre los aspectos que resultan comúnmente apreciados se puede reseñar: **1)** El tamaño de su muestra (manejable pero aún significativo); **2)** Son datos reales, tomados por el botánico Edgar S. Anderson que recopiló los datos para cuantificar la variación morfológica de las flores de Iris de tres especies relacionadas. Dos de las tres especies fueron recolectadas en la Península de la Gaspesia, todas del mismo prado, recogidas en el mismo día y medidas al mismo tiempo por la misma persona con el mismo aparato; **3)** El uso de este conjunto de datos es una tradición. Al evaluar cualquier método, a menudo se considera útil probarlos en conjuntos de datos conocidos, manteniendo así cierta continuidad en la forma en que se evalúan los referidos métodos.
+
+En cuanto al análisis discriminante lineal -aplicado originalmente por Sir Ronald Fisher a este conjunto de datos- la variable dependiente sería la especie de Iris y los atributos las variables explicativas.
+
+Se muestra las primeras cinco observaciones completas del dataset.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data(iris)
+iris.5 <- iris[1:5,]
+kable(iris.5, captation= "Iris dataset")
+```
+
+
+# Análisis exploratorio de datos
+
+## Distribución
+
+Las variables explicativas, todas expresadas en centímetros, se distribuyen conforme se observa en la siguiente representación.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# EDA
+iris.ver <- subset(iris, Species == "versicolor")
+iris.set <- subset(iris, Species == "setosa")
+iris.vir <- subset(iris, Species == "virginica")
+par(mfrow=c(1,3),mar=c(6,3,2,1))
+boxplot(iris.ver[,1:4], main="Versicolor",ylim = c(0,8),las=2)
+boxplot(iris.set[,1:4], main="Setosa",ylim = c(0,8),las=2)
+boxplot(iris.vir[,1:4], main="Virginica",ylim = c(0,8),las=2)
+
+
+```
+
+La línea en negrita representa la mediana, la caja representa el Rango intercuantílico ((IQR = $Q3 - Q1$) de los valores muestrales de cada especie. Los límites inferiores y superiores, al final de cada línea discontínua, representan el valor mínimo/máximo (Excluyendo posibles outliers). Los posibles outliers aparecen representados como puntos, y son valores al menos 1,5 superiores al cuartil superior.
+
+Aparentemente los valores de Versicolor y Virginica son más próximos entre sí, mientras que Setosa parece distribuirse de una forma significativamente distinta.
+
+Todas las especies tienen sus pétalos y sépalos en forma alargada (length > width). La especie Virginica tiene, en término medio, los pétalos y sépalos más grandes, tanto por longitud como por anchura. La especie Setosa tiene los pétalos significativamente más pequeños que el resto de especies.
+
+En términos generales, las variables parecen distribuirse de forma normal y simétrica.
+
+## Correlación
+
+Seguidamente, se muestra la matriz de correlaciones lineales de la variables explicativas.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# calculate correlations using cor and store the results
+corr.iris <- cor(iris[,-5])
+
+ggcorrplot(corr.iris,type = "upper",
+     outline.col = "white", title = "Matriz de correlaciones lineales - atributos Iris",
+     lab = TRUE)
+
+
+
+```
+
+Se puede interpretar que mientras la longitud y la anchura del pétalo están muy positivamente correlacionadas, la anchura y la longitud del sépalo apenas tienen correlación. Así, la longitud del sépalo está mucho más correlacionada con la longitud del pétalo y -necesariamente- con la anchura de este. Por último, la anchura del sépalo está correlacionada negativamente con los atributos del pétalo, pero no muy significativamente. 
+
+# Análisis Previo
+
+Bajo las hipótesis que se enumeran a continuación, la función discriminante obtenida por el análisis discriminante es óptima:
+
+- Cada uno de los grupos tiene una distribución normal multivariante: comprobamos con el test Shapiro-Wilks que las variables se distribuyen conforme a una normal. 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Pruebas de normalidad
+
+## Test de normalidad shapiro-Wilks para distribuciones multivariantes.
+### H0: La población esta normalmente distribuida.
+
+### 1) Virginica
+iris.virginica <- as.matrix(iris[iris$Species == "virginica",1:4],ncol=4) 
+
+resultado_vir <- mvShapiro.Test(iris.virginica)
+
+### se distribuye como una normal multivariante
+
+### 2) setosa
+
+iris.setosa <- as.matrix(iris[iris$Species == "setosa",1:4],ncol=4) 
+
+resultado_set <- mvShapiro.Test(iris.setosa)
+
+### Se rechaza la hipótesis nula, no se distribuye como una normal multivariante.
+
+### 3) versicolor
+
+iris.versicolor <- as.matrix(iris[iris$Species == "versicolor",1:4],ncol=4) 
+
+resultado_ver <- mvShapiro.Test(iris.versicolor)
+
+### se distribuye como una normal multivariante
+
+```
+
+Observamos que los atributos de las especies Virginica y Versicolor (sus respectivos p-valores son: `r round(resultado_vir$p.value,3)` y `r round(resultado_ver$p.value,3)`) se distribuyen conforme a una normal multivariante. En cuanto a la especie setosa, el p-valor resultante del test Shapiro-Wilks (`r round(resultado_set$p.value,3)`) nos lleva a rechazar la hipótesis nula de normalidad. 
+
+
+- La matriz de covarianzas de todos los grupos es igual a $\sigma$ (hipótesis de homocedasticidad). Si se tiene seguridad de que las muestras a comparar proceden de poblaciones que siguen una distribución normal, son recomendables el F-test y el test de Bartlet, pareciendo ser el segundo más recomendable ya que el primero es extremadamente sensible a desviaciones de la normal. Si no se tiene la seguridad de que las poblaciones de origen son normales, se recomiendan el test de Leven utilizando la mediana o el test no paramétrico Fligner-Killeen que también se basa en la mediana. 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+# Test de Homocedasticidad
+
+
+# F-distribution
+res_F <- var.test(x = iris[iris$Species == "versicolor", "Petal.Length"],
+         y = iris[iris$Species == "virginica", "Petal.Length"] )
+
+## BoxM
+
+## Test paramétrico que compara la varianza en muestras multivariantes. Comprueba si dos o más matrices de covarianzas son iguales (homogéneas)
+## Ho: La matriz de covarianzas de las variables dependientes son iguales en todos los grupos/poblaciones
+## H1: La matriz de covarianzas no es igual en todos los grupos
+
+res_BoxM <- boxM(iris[, -5], iris[, 5])
+
+### res
+
+
+### summary(res)
+
+## Barlett
+
+## Ho: Todas las varianzas de una población k son iguales
+## H1: La varianza de al menos dos poblaciones es diferente
+# La prueba de Bartlett es sensible a las desviaciones de la normalidad. Es decir, si las muestras provienen de distribuciones 
+# no normales, entonces la prueba de Bartlett puede ser simplemente para probar la no normalidad
+
+res_bar_1 <- bartlett.test(iris[,1]~Species, iris) # Sepal.length
+res_bar_2 <- bartlett.test(iris[,2]~Species, iris) # Sepal.Width
+res_bar_3 <- bartlett.test(iris[,3]~Species, iris) # Petal.Length
+res_bar_4 <- bartlett.test(iris[,4]~Species, iris) # Petal.Width
+
+## Barlett todas
+
+res_bar_all <- bartlettTests(iris[,1:4], iris$Species) # Todas
+
+
+
+## Levenne 
+
+##Prueba estadística inferencial utilizada para evaluar la igualdad de las varianzas para una variable calculada para dos o más grupos.
+#Ho: las varianzas poblacionales son iguales
+#H1: hay una diferencia entre las variaciones en la población.
+
+res_levene_1 <- leveneTest(y = iris$Petal.Length, group = iris$Species, center = "median")
+res_levene_2 <- leveneTest(y = iris$Petal.Width, group = iris$Species, center = "median")
+res_levene_3 <- leveneTest(y = iris$Sepal.Length, group = iris$Species, center = "median")
+res_levene_4 <- leveneTest(y = iris$Sepal.Width, group = iris$Species, center = "median")
+
+res_levene_5 <- leveneTest(y = iris$Petal.Length, group = iris$Species, center = "mean")
+res_levene_6 <- leveneTest(y = iris$Petal.Width, group = iris$Species, center = "mean")
+res_levene_7 <- leveneTest(y = iris$Sepal.Length, group = iris$Species, center = "mean")
+res_levene_8 <- leveneTest(y = iris$Sepal.Width, group = iris$Species, center = "mean")
+
+# Test de Brown-Forsyth
+
+
+res_BF <- hov(iris$Sepal.Length ~ iris$Species)
+
+# p -value levene-sepal.width
+
+p_1 <- round(res_levene_4$`Pr(>F)`[1],3)
+p_2 <- round(res_levene_8$`Pr(>F)`[1],3)
+
+```
+
+En primer lugar en cuanto al **Test-M paramétrico de Box** de que compara la varianza en muestras multivariantes. Comprueba si dos o más matrices de covarianzas son iguales (homogéneas). En este caso se rechaza (p-valor: `r res_BoxM$p.value`) la hipótesis nula y se asume que la matriz de covarianzas de las variables dependientes no son iguales en todos los grupos/poblaciones.
+
+La prueba de **Bartlett** es sensible a las desviaciones de la normalidad. Si aplicamos este test a cada uno de los atributos, en función de su especie, observamos como en todos los atributos se acepta la hipótesis de igualdad de varianza, a excepción del atributo **Sepal.Width** (p-valor: `r round(res_bar_2$p.value,3)`), que no cumple con la hipótesis de homocesdaticidad.
+
+Si aplicamos otro test menos sensibles a la falta de normalidad, como es el **test levene** utilizando tanto la media, como la mediana, que pudiera resultar más consistente en ausencia de normalidad, obtenemos resultados consistentes con los anteriores. La varianza de las poblaciones no cumple la hipótesis de homocedasticidad para el atributo **Sepal.Width** (p-valor levene-mediana: `r p_1`,p-valor levene-media: `r p_1`).
+
+Por último, aplicando **Test de Brown-Forsyth**, el resultado es igualmente consistente con los anteriores.
+
+A continuación se muestra la distintas funciones de densidad de cada especie por cada variable explicativa.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+D_Petal.Length <-    ggplot(iris, aes(x=Petal.Length, colour=Species, fill=Species)) +
+  geom_density(alpha=.3) +
+  geom_vline(aes(xintercept=mean(Petal.Length),  colour=Species),linetype="dashed",color="grey", size=1)+
+  xlab("Petal Length (cm)") +  
+  ylab("Density")+
+  theme(legend.position="none")
+
+D_Petal.Width <- ggplot(iris, aes(x=Petal.Width, colour=Species, fill=Species)) +
+  geom_density(alpha=.3) +
+  geom_vline(aes(xintercept=mean(Petal.Width),  colour=Species),linetype="dashed",color="grey", size=1)+
+  xlab("Petal Width (cm)") +  
+  ylab("Density")
+  
+
+
+D_Sepal.Width <- ggplot(iris, aes(x=Sepal.Width, colour=Species, fill=Species)) +
+  geom_density(alpha=.3) +
+  geom_vline(aes(xintercept=mean(Sepal.Width),  colour=Species), linetype="dashed",color="grey", size=1)+
+  xlab("Sepal Width (cm)") +  
+  ylab("Density")+
+  theme(legend.position="none")
+
+
+D_Sepal.Length <- ggplot(iris, aes(x=Sepal.Length, colour=Species, fill=Species)) +
+  geom_density(alpha=.3) +
+  geom_vline(aes(xintercept=mean(Sepal.Length),  colour=Species),linetype="dashed", color="grey", size=1)+
+  xlab("Sepal Length (cm)") +  
+  ylab("Density")+
+  theme(legend.position="none")
+
+
+# Plot all density visualizations
+grid.arrange(D_Petal.Length + ggtitle(""),
+             D_Petal.Width  + ggtitle(""),
+             D_Sepal.Width + ggtitle(""),
+             D_Sepal.Length  + ggtitle(""),
+             nrow = 2,
+             top = textGrob("Iris Density Plot", 
+                            gp=gpar(fontsize=15)))
+```
+
+
+# Análisis discriminante
+
+El criterio de Fisher consiste en encontrar un vector de escalares de dimensión px1, de la forma: $\alpha´={\alpha{1},\alpha{2}...\alpha{p}}$ tal que el error de clasificación sea el mínimo posible o, lo que es lo mismo, maximice  la  distancia  entre  las  medias  proyectadas  en  relación  con  la  variabilidad   resultante   en   la   proyección (variabilidad   inter   versus variabilidad intra). 
+
+## Selección de modelo
+
+La manera más conveniente de evaluar la calidad de los posibles modelos (lineal o cuadrático) que planteamos en este informe, es haciendo uso de la técnica de la Validación Cruzada o k-fold Cross Validation. Realizaremos la implementación de dicha técnica haciendo uso del paquete *caret* y evaluaremos el resultado de la misma.
+
+Utilizaremos como métrica para la validación cruzada el denominado **accuracy** del modelo, consistente en:
+
+$accuracy=\frac{VP + VN}{Total}$ , donde "VP" se corresponde con los verdaderos positivos (predicción positiva y observación positiva) y "VN" incluye los verdaderos negativos (predicción negativa y observación negativa).
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Cross validation
+
+control <- trainControl(method="cv", number=10, p= 0.90)
+metric <- "Accuracy"
+
+# Analysis
+
+set.seed(12345)
+fit.lda <- train(Species~., data=iris, method="lda", metric=metric, trControl=control)
+# fit.lda
+# fit.lda$finalModel
+
+
+set.seed(12345)
+fit.qda <- train(Species~., data=iris, method="qda", metric=metric, trControl=control)
+
+#fit.qda
+#fit.qda$finalModel
+
+# select model
+
+results <- resamples(list(lda=fit.lda, qda=fit.qda))
+
+kable(results$values, caption = "Resultados de la validación cruzada de los métodos lineal y cuadrático")
+
+```
+
+Dados los anteriores resultados para cada una de los 10 muestreos aleatorios de entrenamiento (90%) y test (10%), ambos análisis -lineal y cuadrático- obtienen los mismos resultados, ajustando con una precisión media del 98% en ambos casos y una kappa media del 97%, por cuanto ambos modelos han arrojado los mismo resultados para las mismas muestras.
+
+En adelante, se aplican ambos modelos y se examina más exhautivamente los modelos resultantes en cada uno de ellos.
+
+## Modelo lineal
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# Analysis
+
+fit.LDA <- lda( Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, iris)
+fit.LDA
+
+
+fit.LDA.C = predict(fit.LDA, newdata=iris[,c(1,2,3,4)])$class
+fit.LDA.C
+
+table(iris[,5],fit.LDA.C)
+
+
+```
+
+
+
+# Conclusiones
+
+
+# Referencias
+
+- Template: https://github.com/holtzy/epuRate
+
+- viz: https://www.kaggle.com/antoniolopez/iris-data-visualization-with-r
+
