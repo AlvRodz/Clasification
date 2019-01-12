@@ -79,7 +79,7 @@ Se muestra las primeras cinco observaciones completas del dataset.
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 data(iris)
 iris.5 <- iris[1:5,]
-kable(iris.5, captation= "Iris dataset")
+kable(iris.5, caption= "Iris dataset")
 ```
 
 
@@ -303,18 +303,171 @@ grid.arrange(D_Petal.Length + ggtitle(""),
 
 El criterio de Fisher consiste en encontrar un vector de escalares de dimensión px1, de la forma: $\alpha´={\alpha{1},\alpha{2}...\alpha{p}}$ tal que el error de clasificación sea el mínimo posible o, lo que es lo mismo, maximice  la  distancia  entre  las  medias  proyectadas  en  relación  con  la  variabilidad   resultante   en   la   proyección (variabilidad   inter   versus variabilidad intra). 
 
+Utilizamos la semilla "12345" para todos los procesos aleatorios.
+
+## Modelo lineal
+
+Si entrenamos nuestro modelo lineal utilizando el 60% de la muestra como parte de entrenamiento y el 40% como parte de test (88 observaciones, 32 setosa, 29 versicolor y 27 virgínica), los coeficientes resultantes serían los siguientes:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Predict
+
+set.seed(12345)
+training_sample <- sample(c(T,F),nrow(iris),replace = T,prob = c(0.65,0.35))
+train <- iris[training_sample,]
+test <- iris[!training_sample,]
+
+# LDA
+
+## re-train the model
+set.seed(12345)
+fit.LDA <- lda( Species ~ ., train)
+
+
+df_1 <- as.data.frame(fit.LDA$scaling)
+
+knitr::kable(df_1, caption = "Coeficientes del modelo discriminante lineal entrenado.")
+
+
+```
+
+El 98,84% del poder discriminatorio del modelo lo aporta el primer componente (LD1), mientras que el segundo componente (LD2) explica apenas un 1,16%.
+
+Resulta evidente que el atributo con mayor capacidad discrimanante es **Petal.witdh**, su coeficiente (LD1: -3,39) es notablemente superior al resto de atributos.
+
+Representamos las distintas especies en LD1 (que aporta la gran mayoría de la traza y por tanto del poder discriminante) y LD2, mediante un diagrama de puntos en el que se observa como setosa se distribuye muy diferenciadamente de las demás, mientras que la distancia entre las distribuciones de virginica y versicolor es considerablemente menor.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+## Viz
+
+
+ggplotLDAPrep <- function(x){
+  if (!is.null(Terms <- x$terms)) {
+    data <- model.frame(x)
+    X <- model.matrix(delete.response(Terms), data)
+    g <- model.response(data)
+    xint <- match("(Intercept)", colnames(X), nomatch = 0L)
+    if (xint > 0L) 
+      X <- X[, -xint, drop = FALSE]
+  }
+  means <- colMeans(x$means)
+  X <- scale(X, center = means, scale = FALSE) %*% x$scaling
+  rtrn <- as.data.frame(cbind(X,labels=as.character(g)))
+  rtrn <- data.frame(X,labels=as.character(g))
+  return(rtrn)
+}
+
+
+test<-iris[grep("setosa|virginica|versicolor", iris$Species),1:5]
+ldaobject <- lda(Species ~ ., data=test)
+fitGraph <- ggplotLDAPrep(ldaobject)
+
+ggplot(fitGraph, aes(LD1,LD2, color=labels))+
+  geom_point() + 
+  stat_ellipse(aes(x=LD1, y=LD2, fill = labels), alpha = 0.2, geom = "polygon")
+
+```
+
+
+Una vez entrenado el modelo y reconocidas sus características, llevamos a cabo la predicciones con la muestra de test y comparamos las predicciones realizadas con las etiquetas de especie del test, obteniendo la siguiente matriz de confusión.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+##  testing
+
+fit.LDA.C = predict(fit.LDA,test)
+
+Conf_matrix <- confusionMatrix(fit.LDA.C$class,test[,5])
+
+Pred_r1 <- as.data.frame(Conf_matrix$table)
+
+Pred_r2 <- as.data.frame(Conf_matrix$overall)
+
+kable(Pred_r1, caption = "Matriz de Confusión Modelo Lineal")
+
+```
+
+
+Conforme a la matriz de confusión, el **accuracy** (Verdaderos postivos + verdaderos negativos / Total Obs.) del modelo es del **95,16%**, un resultado destacable.
+
+Asimismo, en cuanto a la **kappa de cohen**(más detalle en: https://stats.stackexchange.com/questions/82162/cohens-kappa-in-plain-english), también mostrada para complementar la métrica de accuracy, relaciona el accuracy obtenido con el accuracy esperado dado por el número de clases y su prevalencia. Los resultados son igualmente bastante notables.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+
+Pred_r2 <- as.data.frame(Pred_r2[-7,])
+
+colnames(Pred_r2) <- "LDA Metrics"
+
+kable(Pred_r2, caption = "Métricas del modelo lineal")
+
+```
+
+
+## Modelo cuadrático
+
+Llevamos a cabo el mismo procedimiento que anteriormente pero aplicando el análisis discriminante cuadrático en este caso. Las muestras de entrenamiento y test son las mismas que las anteriores.
+
+Comparamnos nuevamente las previsiones del modelo con las referencias.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# QDA 
+## re-train the model
+set.seed(12345)
+fit.QDA <- qda( Species ~ ., train)
+
+df_qda <- as.data.frame(fit.QDA$scaling)
+##  testing
+
+fit.QDA.C = predict(fit.QDA,test)
+
+
+Conf_matrix_qda <- confusionMatrix(fit.QDA.C$class,test[,5])
+
+Pred_r3 <- as.data.frame(Conf_matrix_qda$table)
+
+Pred_r4 <- as.data.frame(Conf_matrix_qda$overall)
+
+kable(Pred_r3, caption = "Matriz de Confusión Modelo cuadrático")
+
+```
+
+El modelo cuadrático con las pruebas de entrenamiento y testing elegidas, tiene un **mayor accuracy** que el modelo anterior.
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+Pred_r4 <- as.data.frame(Pred_r4[-7,])
+
+colnames(Pred_r4) <- "LDA Metrics"
+
+kable(Pred_r4, caption = "Métricas del modelo lineal")
+
+
+
+```
+
+No obstante la diferencia entre los resultados de uno y otro modelo pudiera diferir si se hubieran seleccionado unas muestras distintas. 
+
+
 ## Selección de modelo
 
 La manera más conveniente de evaluar la calidad de los posibles modelos (lineal o cuadrático) que planteamos en este informe, es haciendo uso de la técnica de la Validación Cruzada o k-fold Cross Validation. Realizaremos la implementación de dicha técnica haciendo uso del paquete *caret* y evaluaremos el resultado de la misma.
 
-Utilizaremos como métrica para la validación cruzada el denominado **accuracy** del modelo, consistente en:
+Utilizaremos como métrica para la validación cruzada el denominado **accuracy** y **kappa** del modelo.
 
-$accuracy=\frac{VP + VN}{Total}$ , donde "VP" se corresponde con los verdaderos positivos (predicción positiva y observación positiva) y "VN" incluye los verdaderos negativos (predicción negativa y observación negativa).
+La 10 muestreos de entrenamiento (90%) y test(10%) se han llevado a cabo de forma aleatoria.
+
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 # Cross validation
 
+set.seed(12345)
 control <- trainControl(method="cv", number=10, p= 0.90)
 metric <- "Accuracy"
 
@@ -340,32 +493,11 @@ kable(results$values, caption = "Resultados de la validación cruzada de los mé
 
 ```
 
-Dados los anteriores resultados para cada una de los 10 muestreos aleatorios de entrenamiento (90%) y test (10%), ambos análisis -lineal y cuadrático- obtienen los mismos resultados, ajustando con una precisión media del 98% en ambos casos y una kappa media del 97%, por cuanto ambos modelos han arrojado los mismo resultados para las mismas muestras.
-
-En adelante, se aplican ambos modelos y se examina más exhautivamente los modelos resultantes en cada uno de ellos.
-
-## Modelo lineal
-
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-
-
-# Analysis
-
-fit.LDA <- lda( Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, iris)
-fit.LDA
-
-
-fit.LDA.C = predict(fit.LDA, newdata=iris[,c(1,2,3,4)])$class
-fit.LDA.C
-
-table(iris[,5],fit.LDA.C)
-
-
-```
-
+Ambos análisis -lineal y cuadrático- obtienen los mismos resultados, ajustando con una precisión media del 98% en ambos casos y una kappa media del 97%.
 
 
 # Conclusiones
+
 
 
 # Referencias

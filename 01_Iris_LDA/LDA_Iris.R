@@ -217,7 +217,35 @@ confusionMatrix(fit.LDA.C$class,test[,5])
 
 ## Viz
 
+
+# 1
 plot(fit.LDA, dimen = 1, type = "b")
+
+# 2
+ggplotLDAPrep <- function(x){
+  if (!is.null(Terms <- x$terms)) {
+    data <- model.frame(x)
+    X <- model.matrix(delete.response(Terms), data)
+    g <- model.response(data)
+    xint <- match("(Intercept)", colnames(X), nomatch = 0L)
+    if (xint > 0L) 
+      X <- X[, -xint, drop = FALSE]
+  }
+  means <- colMeans(x$means)
+  X <- scale(X, center = means, scale = FALSE) %*% x$scaling
+  rtrn <- as.data.frame(cbind(X,labels=as.character(g)))
+  rtrn <- data.frame(X,labels=as.character(g))
+  return(rtrn)
+}
+
+
+test<-iris[grep("setosa|virginica|versicolor", iris$Species),1:5]
+ldaobject <- lda(Species ~ ., data=test)
+fitGraph <- ggplotLDAPrep(ldaobject)
+
+ggplot(fitGraph, aes(LD1,LD2, color=labels))+
+  geom_point() + 
+  stat_ellipse(aes(x=LD1, y=LD2, fill = labels), alpha = 0.2, geom = "polygon")
 
 # QDA 
 
@@ -237,6 +265,15 @@ table(test[,5],fit.QDA.C$class)
 confusionMatrix(fit.QDA.C$class,test[,5])
 
 ## viz
+
+
+test<-iris[grep("setosa|virginica|versicolor", iris$Species),1:5]
+ldaobject <- lda(Species ~ ., data=test)
+fitGraph <- ggplotLDAPrep(ldaobject)
+
+ggplot(fitGraph, aes(LD1,LD2, color=labels))+
+  geom_point() + 
+  stat_ellipse(aes(x=LD1, y=LD2, fill = labels), alpha = 0.2, geom = "polygon")
 
 
 
