@@ -16,11 +16,11 @@ output:
 
 <br><br>
 
-> Haciendo uso de técnicas de agrupamientos y conforme a las indicaciones recibidas por nuestro responsable, se han distribuido los vehículos que recientemente ha adquirido en sus diferentes localizaciones.
+> Este reporte pretende servir de introducción a la técnicas de análisis discriminante para resolver problemas de clasificación en aprendizaje supervisado. Se utiliza el famoso dataset "Iris" para llevar a cabo un análisis discriminante lineal y un análisis discriminante cuadrático.
 
-> Se han utilizado las variables potencia, peso y aceleración para adaptar los vehículos a cada localización.
+> Después del análisis exploratorio de los datos, se llevan a cabo un análisis previo de los datos para conocer si resultan óptimos para las técnicas mencionadas.
 
-> En primer lugar, se ha definido de forma exhaustiva el problema que se pretende resolver, se ha definido el enfoque más óptimo a nivel práctico y posteriormente se ha demostrado que la muestra utilizada y las variables seleccionadas tienen las características necesarias para ser agrupadadas de forma consistente.
+> Los resultados del LDA y QDA obtenidos a traves de cross validation son consistentemente iguales. 
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 # Packages
@@ -167,6 +167,11 @@ resultado_ver <- mvShapiro.Test(iris.versicolor)
 
 ### se distribuye como una normal multivariante
 
+
+
+
+
+
 ```
 
 Observamos que los atributos de las especies Virginica y Versicolor (sus respectivos p-valores son: `r round(resultado_vir$p.value,3)` y `r round(resultado_ver$p.value,3)`) se distribuyen conforme a una normal multivariante. En cuanto a la especie setosa, el p-valor resultante del test Shapiro-Wilks (`r round(resultado_set$p.value,3)`) nos lleva a rechazar la hipótesis nula de normalidad. 
@@ -246,9 +251,9 @@ p_2 <- round(res_levene_8$`Pr(>F)`[1],3)
 
 En primer lugar en cuanto al **Test-M paramétrico de Box** de que compara la varianza en muestras multivariantes. Comprueba si dos o más matrices de covarianzas son iguales (homogéneas). En este caso se rechaza (p-valor: `r res_BoxM$p.value`) la hipótesis nula y se asume que la matriz de covarianzas de las variables dependientes no son iguales en todos los grupos/poblaciones.
 
-La prueba de **Bartlett** es sensible a las desviaciones de la normalidad. Si aplicamos este test a cada uno de los atributos, en función de su especie, observamos como en todos los atributos se acepta la hipótesis de igualdad de varianza, a excepción del atributo **Sepal.Width** (p-valor: `r round(res_bar_2$p.value,3)`), que no cumple con la hipótesis de homocesdaticidad.
+La prueba de **Bartlett** es sensible a las desviaciones de la normalidad. Si aplicamos este test a cada uno de los atributos, en función de su especie, observamos como en todos los atributos se rechaza la hipótesis de igualdad de varianza, a excepción del atributo **Sepal.Width** (p-valor: `r round(res_bar_2$p.value,3)`), que cumple con la hipótesis de homocesdaticidad.
 
-Si aplicamos otro test menos sensibles a la falta de normalidad, como es el **test levene** utilizando tanto la media, como la mediana, que pudiera resultar más consistente en ausencia de normalidad, obtenemos resultados consistentes con los anteriores. La varianza de las poblaciones no cumple la hipótesis de homocedasticidad para el atributo **Sepal.Width** (p-valor levene-mediana: `r p_1`,p-valor levene-media: `r p_1`).
+Si aplicamos otro test menos sensibles a la falta de normalidad, como es el **test levene** utilizando tanto la media, como la mediana, que pudiera resultar más consistente en ausencia de normalidad, obtenemos resultados consistentes con los anteriores. La varianza de las poblaciones solo cumple la hipótesis de homocedasticidad para el atributo **Sepal.Width** (p-valor levene-mediana: `r p_1`,p-valor levene-media: `r p_1`).
 
 Por último, aplicando **Test de Brown-Forsyth**, el resultado es igualmente consistente con los anteriores.
 
@@ -320,7 +325,7 @@ test <- iris[!training_sample,]
 
 # LDA
 
-## re-train the model
+## train the model
 set.seed(12345)
 fit.LDA <- lda( Species ~ ., train)
 
@@ -398,7 +403,6 @@ Asimismo, en cuanto a la **kappa de cohen**(más detalle en: https://stats.stack
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 
-Pred_r2 <- as.data.frame(Pred_r2[-7,])
 
 colnames(Pred_r2) <- "LDA Metrics"
 
@@ -411,7 +415,7 @@ kable(Pred_r2, caption = "Métricas del modelo lineal")
 
 Llevamos a cabo el mismo procedimiento que anteriormente pero aplicando el análisis discriminante cuadrático en este caso. Las muestras de entrenamiento y test son las mismas que las anteriores.
 
-Comparamnos nuevamente las previsiones del modelo con las referencias.
+Comparamos nuevamente las previsiones del modelo con las referencias.
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
@@ -441,7 +445,7 @@ El modelo cuadrático con las pruebas de entrenamiento y testing elegidas, tiene
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 
-Pred_r4 <- as.data.frame(Pred_r4[-7,])
+
 
 colnames(Pred_r4) <- "LDA Metrics"
 
@@ -498,7 +502,7 @@ Ambos análisis -lineal y cuadrático- obtienen los mismos resultados, ajustando
 
 # Conclusiones
 
-
+Los resultados del LDA y QDA obtenidos a traves de cross validation son consistentemente iguales. Los fallos en uno y otro modelo se ocasionan por la incapacidad en determinados casos de distinguir entre las especies virginica y versicolor.
 
 # Referencias
 

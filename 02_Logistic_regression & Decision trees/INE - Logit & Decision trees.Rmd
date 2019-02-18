@@ -1,0 +1,502 @@
+---
+title: "Riesgo de Pobreza: Regresión Logística y Árboles de Clasificación"
+author: "[Álvaro Rodríguez](https://github.com/AlvRodz)"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+mail: "alvrodriguezprof@gmail.com"
+linkedin: "www.linkedin.com/in/AlvRodz"
+twitter: "AlvaroRL28"
+github: "AlvRodz"
+logo: "image/ine.jpg"
+output:
+  epuRate::epurate:
+    toc: TRUE
+    number_sections: FALSE
+    code_folding: "hide"
+---
+
+> Resumen Ejecutivo: En el presente informe se utilizan técnicas como la regresión logística y los árboles de clasificación para clasificar la variable objetivo, Hogares en riesgo de pobreza. Los resultados obtenidos nos indican que la técnica que mejor se ajusta a nuestros datos es el logístico, con una precisión del 77,78% sobre test y un AUC del 82,2%.
+
+
+# Introducción
+
+Se dispone una base de datos de 477 observaciones y 17 variables, además de un identificador de hogar por cada observación. La variable objetivo será "HogarPobreza", variable que puede tomar valores: 0 (El hogar no se encuentra en Riesgo de Pobreza) o 1 (El hogar se encuentra en riesgo de pobreza).
+
+Se explorarán y analizarán los datos disponibles. Posteriormente, se dividirán las observaciones en muestra de entrenamiento y muestra de test. Finalmente, se entrenarán un modelo logístico y árboles de decisión sobre la muestra de entrenamiento, para clasificar por cada uno de estos mmétodos, la variable "HogarPobreza" de la muestra de test, en virtud de la variables independientes seleccionadas.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+if (!require("readxl")) install.packages("readxl")
+if (!require("visdat")) install.packages("visdat")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("ggcorrplot")) install.packages("ggcorrplot")
+if (!require("DescTools")) install.packages("DescTools")
+if (!require("caret")) install.packages("caret")
+if (!require("ggpubr")) install.packages("ggpubr")
+if (!require("pscl")) install.packages("pscl")
+if (!require("rpart")) install.packages("rpart")
+if (!require("rpart.plot")) install.packages("rpart.plot")
+if (!require("ROCR")) install.packages("ROCR")
+if (!require("DescTools")) install.packages("DescTools")
+if (!require("gridExtra")) install.packages("gridExtra")
+library(gridExtra)
+library(readxl)
+library(visdat)
+library(dplyr)
+library(ggcorrplot)
+library(DescTools)
+library(caret)
+library(ggpubr)
+library(pscl)
+library(rpart)
+library(rpart.plot)
+library(ROCR)
+library(DescTools)
+library(MASS)
+```
+
+
+# Datos
+
+La Encuesta de condiciones de vida (ECV) se realiza desde 2004. Está basada en criterios armonizados para todos los países de la Unión Europea, su objetivo fundamental es disponer de una fuente de referencia sobre estadísticas comparativas de la distribución de ingresos y la exclusión social en el ámbito europeo.
+
+Se incluye en la carpeta datos de este proyecto, "Diseño de registro ecv16" que contiene los ficheros transversales de usuario de la encuesta ECV de 2016, con explicación detallada de cada variable y de cada valor categórico.
+
+Los datos utilizados se componen de las variabes mostradas seguidamente, con indicación del tipo de variable (numérica o factor):
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Parse
+
+ruta <- 'datos/data.xlsx'
+
+datos_raw <- read_xlsx(ruta)
+
+
+colnames(datos_raw) <- c('Hogar','AyudaFamilias','RentaMenos16','VacacionesOutdoor',
+                     'CapacidadAfrontar', 'TVColor', 'Ordenador','LlegarFinMes', 'RegimenTenencia',
+                     'Miembros','RentaTotalAnterior',
+                     'HogarPobreza', 'Region', 'EdadMayor', 'HorasSemanales', 'Mayores16','SexoMayor','ActMayor')
+
+# Tratamiento de datos
+
+# summary(datos_raw)
+
+datos <- datos_raw %>%
+  mutate(AyudaFamilias = ifelse(AyudaFamilias == 0,0,1))  %>%
+  mutate(RentaMenos16 = ifelse(RentaMenos16 == 0,0,1))  %>%
+  mutate(VacacionesOutdoor = ifelse(VacacionesOutdoor == 1,0,1)) %>%
+  mutate(CapacidadAfrontar = ifelse(CapacidadAfrontar == 1,0,1)) 
+
+datos[,c(2,3,4,5,6,7,8,9,12,13,17,18)] <- lapply(datos[,c(2,3,4,5,6,7,8,9,12,13,17,18)], factor)
+
+# eliminamos Hogar y lo establecemos como index.
+
+rownames(datos) <- datos$Hogar
+datos_clean <- datos[,-1]
+
+
+vis_dat(datos_clean)
+
+```
+
+Cabe resaltar, que no hay valores vacíos en ninguna de las variables iniciales. Cualquier tratamiento que se estime preciso se llevará a cabo una vez finalizado el análisis exploratorio.
+
+Se descarta la utilización de la renta del año anterior, por cuanto es la variable a partir de la cual se determina el riesgo de pobreza en el hogar.
+
+# Análisis Exploratorio
+
+Se desarrolla la fase de exploración de los datos, asignando a cada una de las variables el tipo de dato que se muestra en la visualización anterior.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+# variables types
+
+numerical <- select_if(datos_clean, is.numeric)
+  
+factor <- select_if(datos_clean, is.factor)
+
+target <- datos_clean$HogarPobreza
+
+```
+
+## Variables Categóricas
+
+En cuanto a la variable **objetivo**, comprobamos que está balanceada.
+
+
+```{r}
+Desc(target, plotit = T, main="Hogares en riesgo de pobreza - muestra completa")
+```
+
+Se comprueba con la utilización de matrices de correspondencia la relación entre la variable objetivo y las variables categóricas y el posible valor clasificador de estas últimas. Se representan aquellas variables que a priori, parecen tener mayor capacidad predictiva.
+
+Vemos como existen diferencias significativas entre los hogares en riesgo de pobreza y los que no lo están en relación a su capacidad de afrontar gastos imprevistos.
+
+```{r}
+
+cont_CA <- xtabs(~CapacidadAfrontar+HogarPobreza, data=datos_clean)
+rownames(cont_CA) <- c("Pueden afrontar", "No pueden afrontar")
+colnames(cont_CA) <- c("Fuera de Riesgo", "En riesgo")
+cont_CA <- as.data.frame(cont_CA)
+ggballoonplot(cont_CA, fill = "value",main ="Riesgo de pobreza en función de capacidad de afrontar gastos imprevistos",show.label = TRUE,ggtheme=theme_bw())+
+  scale_fill_viridis_c(option = "D")
+
+
+```
+
+De la misma manera, existen diferencias significativas entre la situación de riesgo de pobreza y la forma en la que los hogares dicen llegar a fin de mes.
+
+
+```{r}
+
+cont_FM <- xtabs(~LlegarFinMes+HogarPobreza, data=datos_clean)
+rownames(cont_FM) <- c("Mucha dificultad", "Dificultad", "Cierta dificultad", "Cierta facilidad", "Facilidad", "Mucha Facilidad")
+colnames(cont_FM) <- c("Fuera de Riesgo", "En riesgo")
+cont_FM <- as.data.frame(cont_FM)
+ggballoonplot(cont_FM, fill = "value",main ="Riesgo de pobreza en función Llegar fin de mes",show.label = TRUE,ggtheme=theme_bw())+
+  scale_fill_viridis_c(option = "D")
+
+
+```
+
+En cuanto a la actividad del mayor del hogar, se comprueba claramente como en los hogares que no están en riesgo de pobreza, la persona mayor tiene una actividad asalariadad a tiempo completo, mientras que aquellos hogares con riesgo de pobreza, la persona mayor del hogar esta parada.
+
+
+```{r}
+
+
+cont_AM <- xtabs(~ActMayor+HogarPobreza, data=datos_clean)
+rownames(cont_AM) <- c("Asalariado TC", "Asalariado TP", "Cuenta Propia TC", "Cuenta Propia TP", "Parado", "Jubilado", "Incapacitado", "Ama de Casa", "Otra clase inactividad")
+colnames(cont_AM) <- c("Fuera de Riesgo", "En riesgo")
+cont_AM <- as.data.frame(cont_AM)
+ggballoonplot(cont_AM, fill = "value",main ="Riesgo de pobreza en función Actividad mayor",show.label = TRUE,ggtheme=theme_bw())+
+  scale_fill_viridis_c(option = "D")
+
+```
+
+
+En último lugar,los hogares con una vivienda en propiedad se corresponden con aquellos que no están en riesgo de pobreza, mientras que entre los que están en riesgo de pobreza, el valor categórico más comun es el alquiler a precio de mercado.
+
+```{r}
+
+cont_RT <- xtabs(~RegimenTenencia+HogarPobreza, data=datos_clean)
+rownames(cont_RT) <- c("Propiedad sin hipoteca", "Propiedad con hipoteca", "Alquiler precio de mercado", "Alquiler a precio inferior", "Cesión gratuita")
+colnames(cont_RT) <- c("Fuera de Riesgo", "En riesgo")
+cont_RT <- as.data.frame(cont_RT)
+ggballoonplot(cont_RT, fill = "value",main ="Riesgo de pobreza en función Región de Tenencia",show.label = TRUE,ggtheme=theme_bw())+
+  scale_fill_viridis_c(option = "D")
+```
+
+
+
+## Variables Numéricas
+
+En cuanto a las variables numéricas, exploramos la correlación entre variables para descartar la posible presencia de multicolinealidad y el valor predictivo de las mismas con respecto al riesgo de pobreza del hogar.
+
+### Correlación
+
+Ninguna de las correlaciones entre variables puede considerarse relevante, descartando la posibilidad de existencia de multicolinealidad
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Analisis exploratorio
+
+## correlation
+corr.sample <- cor(numerical)
+
+ggcorrplot(corr.sample,type = "upper",
+           outline.col = "white", title = "Matriz de correlaciones lineales - atributos Iris",
+           lab = TRUE)
+```
+
+
+### Relación con la variable objetivo
+
+Se visualizan las distintas distribuciones de cada varibles para los hogares en riesgo de pobreza y los que nos se encuentran en riesgo de pobreza. 
+
+Aquella variable que parecen distribuirse de forma más significativamente distinta en uno y otro caso es HorasSemanales ya que consistentemente con lo observado en ActMayor, los hogares que no están en riesgo de pobreza tienen por lo general jornada de trabajo semanales de 40 horas, mientras que en el caso contrario, las horas semanales medias son muy inferiores.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# numericas
+
+
+VpRenta <-  ggplot(datos_clean, aes(HogarPobreza, RentaTotalAnterior, fill=HogarPobreza)) + 
+  geom_violin(aes(color = HogarPobreza), trim = T)+
+  scale_y_continuous("RentaTotalAnterior")+
+  geom_boxplot(width=0.1)+
+  theme(legend.position="none")
+
+DhistRenta <-    ggplot(datos_clean, aes(x=RentaTotalAnterior, colour=HogarPobreza, fill=HogarPobreza)) +
+  geom_density(alpha=.3) +
+  geom_vline(aes(xintercept=mean(RentaTotalAnterior),  colour=HogarPobreza),linetype="dashed",color="grey", size=1)+
+  xlab("RentaTotalAnterior") +  
+  ylab("Density")+
+  theme(legend.position="none")
+
+
+VpMiembros <-  ggplot(datos_clean, aes(HogarPobreza, Miembros, fill=HogarPobreza)) + 
+  geom_violin(aes(color = HogarPobreza), trim = T)+
+  scale_y_continuous("Miembros")+
+  geom_boxplot(width=0.1)+
+  theme(legend.position="none")
+
+
+VpEdadMayor <-  ggplot(datos_clean, aes(HogarPobreza, EdadMayor, fill=HogarPobreza)) + 
+  geom_violin(aes(color = HogarPobreza), trim = T)+
+  scale_y_continuous("EdadMayor")+
+  geom_boxplot(width=0.1)+
+  theme(legend.position="none")
+
+VpHorasSemanales <-  ggplot(datos_clean, aes(HogarPobreza, HorasSemanales, fill=HogarPobreza)) + 
+  geom_violin(aes(color = HogarPobreza), trim = T)+
+  scale_y_continuous("HorasSemanales")+
+  geom_boxplot(width=0.1)+
+  theme(legend.position="none")
+
+
+VpMayores16 <-  ggplot(datos_clean, aes(HogarPobreza, Mayores16, fill=HogarPobreza)) + 
+  geom_violin(aes(color = HogarPobreza), trim = T)+
+  scale_y_continuous("Mayores16")+
+  geom_boxplot(width=0.1)+
+  theme(legend.position="none")
+
+# Plot all visualizations
+grid.arrange(VpMiembros  + ggtitle(""),
+             VpEdadMayor + ggtitle(""),
+             VpHorasSemanales + ggtitle(""),
+             VpMayores16 + ggtitle(""),
+             nrow = 2
+)
+
+```
+
+
+# Regresión logística
+
+Inicialmente definimos nuestro modelo predictivo con todas las variables disponibles, depués mediante stepwise (Forward y Backward) nos arroja un modelo con menos variables de la inicialmente consideradas, comparándolos con el criterio de Akaike (penaliza grados de libertad) el que nos aporta un número menor de AIC, es el que hemos seleccionado finalmente con las variables: CapacidadAfrontar, LlegarFinMes, RegimenTenencia, Miembros y ActMayor.
+
+Se puede decir que todas las variables de este modelo tienen un parámetro estimado distinto de cero con un nivel de confianza del 95%, excepto RegimenTenencia que tiene un p-valor ligeramente superior a ese nivel de confianza.
+
+
+```{r message=FALSE, warning=FALSE}
+
+datos_clean_model <- datos_clean[,-10]
+
+# separamos train y testing
+set.seed(123)
+training_sample <- sample(c(T,F),nrow(datos_clean_model),replace = T,prob = c(0.70,0.30))
+train <- datos_clean_model[training_sample,]
+test <- datos_clean_model[!training_sample,]
+# dim(train)
+# dim(test)
+# modelo
+regression <- glm(HogarPobreza ~.,family = "binomial"(link = 'logit'), data = train)
+
+# summary(regression)
+
+
+# stepAIC(regression, direction = c("both"))
+
+regression_step <- glm(formula = HogarPobreza ~ CapacidadAfrontar + LlegarFinMes + 
+                         RegimenTenencia + Miembros + ActMayor, family = binomial(link = "logit"), 
+                       data = train)
+
+anova(regression_step, test = "Chisq")
+
+# summary(regression_step)
+
+
+
+```
+
+## Odds ratio
+
+Una proporción de probabilidades mayor que 1 es una asociación positiva (es decir, un número más alto para el predictor significa el grupo 1 en el resultado), y una proporción de probabilidades menor que 1 es una asociación negativa (es decir, el número más alto para el predictor significa el grupo 0 en el resultado).
+
+Es muy significativa la importancia predictiva de determinados valores categóricos de ActMayor y la relación negativa con el valor categórico 5 de LlegarFinMes ("Facilidad").
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+odds_ratio <- as.data.frame(exp(coef(regression_step)))
+
+colnames(odds_ratio) <- "Odds Ratios"
+
+knitr::kable(odds_ratio, capation = "Odds Ratios - Regresión logística", caption = "Odds ratio - modelo de regresión logística")
+```
+
+
+## Predicción
+
+Llevamos a cabo la predicción, aplicando un hiperparámetro de selección de 0.35 (maximiza la precisión del modelo), y generamos la matriz de confusión del modelo.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+Pobreza_pred <- predict(regression_step, newdata = test, type = "response")
+
+# cut-off
+pred_cut_off <- ifelse(Pobreza_pred > 0.35, 1,0)
+
+
+# Confusion matriz
+
+
+confusionMatrix(as.factor(pred_cut_off),test$HogarPobreza)
+
+```
+
+La precisión del modelo es de 77.78%, mientras que los errores de clasifición para positivos y negativos son muy parecidos, se puede decir que el modelo reconoce mejor los hogares que están en riesgo de pobreza, dado que hay menos casos que hogares que no se encuentran bajo este riesgo. 
+
+Para completar el proceso, calculamos la curva roc para este modelo. El área bajo la curva el del 82.2%. El modelo demuestra poder predictivo.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# ROC curve
+
+prediccion1 <- prediction(Pobreza_pred, test$HogarPobreza)
+AUC <- performance(prediccion1, "auc")
+perf <- performance(prediccion1, "tpr", "fpr") 
+plot(perf, colorize = TRUE) # Establecemos el color. 
+abline(a = 0, b = 1) 
+text(0.4, 0.6, paste(AUC@y.name, "\n", round(unlist(AUC@y.values), 3)), cex = 0.7)
+```
+
+
+# Árboles de Clasificación
+
+Se ajusta un árbol de clasificación empleando como variable respuesta HogarPobreza y como predictores todas las variables disponibles excepto RentTotalAnterior.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 1) Primer arbol
+set.seed(1234)
+arbol <- rpart(HogarPobreza ~ ., 
+               data=train, 
+               method="class",
+               parms=list(split="information"))
+
+arbol.pred_1 <- predict(arbol, test, type="class")
+
+# print(arbol)
+
+```
+
+El predictor más influyente es ActMayor, este hecho queda reflejado en la primera división del árbol, cuyos valores categóricos separan las observaciones en primer lugar. Otras de las varaibles utilizadas son LlegarFinMes, Región, EdadMayor y Miembros. El árbol de clasificación tiene 9 nodos terminales, en función de los ingresos mensuales de la vivienda.
+
+El árbol resultante se visualiza a continuación.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+rpart.plot(arbol, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación sin podar")
+
+```
+
+En la parte de abajo de cada nodo vemos el porcentaje de observaciones que se han clasificado en el mismo. Igualmente, en la parte media de cada nodo se aprecian los el porcentaje de observaciones cuyos hogares se encuentran en riesgo de pobreza (1).
+
+## Predicción
+
+Llevamos a cabo la predicción de Hogares en Riesgo de Pobreza para los datos de test. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+arbol.pred_1 <- predict(arbol, test, type="class")
+
+tabla.clasif.arbol1 <- table(test$HogarPobreza, arbol.pred_1,
+                             dnn=c("Actual", "Predicted"))
+
+confusionMatrix(as.factor(arbol.pred_1),test$HogarPobreza)
+
+tcc2 <- 100 * sum(diag(tabla.clasif.arbol1))/sum(tabla.clasif.arbol1)
+
+```
+
+La precisión lograda por el árbol de clasificación es del `r round(tcc2,3)`%. Es una accuracy algo inferior al modelo logístico. Visualizamos a continuación la curva ROC del modelo.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# ROC curve
+
+prediccion_arbol <- predict(arbol, test, type="prob")[,2] 
+pred_arbol = prediction(prediccion_arbol, test$HogarPobreza) 
+AUC <- performance(pred_arbol, "auc")
+perf1 <- performance(pred_arbol, "tpr", "fpr")
+plot(perf1, colorize = TRUE)
+abline(a = 0, b = 1)
+text(0.4, 0.6, paste(AUC@y.name, "\n", round(unlist(AUC@y.values), 5)), cex = 0.7)
+
+
+```
+
+El área bajo la curva es igualmente inferior a la conseguida anteriormente con el modelo de regresión lineal logística.
+
+## Podado
+
+Para determinar si el árbol es apropiado o si algunas de las ramas necesitan estar sujetas a poda, podemos usar el elemento cptable del objeto rpart. Confirmamos que se debe llevar a cabo la poda, reduciendo el árbola  tan solo dos nodos terminales.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Podado
+# printcp(arbol) 
+opt <- which.min(arbol$cptable[,"xerror"])
+cp <- arbol$cptable[opt, "CP"]
+arbol_podado <- prune(arbol, cp = cp)
+
+# Predicción arbol podado
+
+rpart.plot(arbol_podado, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación podado")
+
+```
+
+### Predicción
+
+Comprobamos nuevamente con los datos de test la precisión del modelo.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+arbol_prediccion <- predict(arbol_podado, test, type = "class")
+arbol_resultado_total <- table(test$HogarPobreza, arbol_prediccion,
+                               dnn = c("Actual", "Predicted"))
+
+arbol_resultado_total
+
+acc_pod <- 100 * sum(diag(arbol_resultado_total))/sum(arbol_resultado_total)
+```
+
+La precisión es ligeramente inferior (`r round(acc_pod,3)`) a la obtenida en el árbol de descisión anterior, conforme esperabamos, si bien, dado que se ha reducido enormemente la complejidad del modelo y en menor medida la precisión del modelo, este último modelo podado debería ser seleccionado por motivos de parsimonia.
+
+Visualizamos la curva ROC del arbol podado. El AUC del modelo es de 0.68.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# ROC curve
+prediccion_arbol2 <- predict(arbol_podado, test, type="prob")[,2] 
+pred_arbol2 <- prediction(prediccion_arbol2, test$HogarPobreza) 
+AUC2 <- performance(pred_arbol2, "auc")
+perf2 <- performance(pred_arbol2, "tpr", "fpr")
+plot(perf2, colorize = TRUE)
+abline(a = 0, b = 1)
+text(0.4, 0.6, paste(AUC2@y.name, "\n", round(unlist(AUC2@y.values), 5)), cex = 0.7)
+```
+
+
+# Conclusiones
+
+Cabe concluir que el modelo que mejor ha clasificado los hogares en riesgo de pobreza es el modelo logístico, cuya precisión y cuyo relación entre verdaderos positivos y falsos positivos es la mejor de entre todos los modelos ajustados en el presente, probablemente debido a la existencia de relaciones lineales entre las variables.
+
+En cualquier caso, el último de los modelos de árbol de clasificación ha conseguido una precisión notable habida cuenta de la simplicidad del modelo.
+
+La variable utilizada por el árbol de clasificación podado, ActMayor, también ha destacado por su poder predictivo en el modelo de regresión logístico.
+
+
+
+
+
+
+
+
+
+
+
+
